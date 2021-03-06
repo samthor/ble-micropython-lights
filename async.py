@@ -169,6 +169,7 @@ async def main():
       addr, update = pending_command.popitem(True)
       print("got pending", addr, update)
 
+      # FIXME: not done yet?
       device = aioble.Device
 
     # Otherwise just find a device we haven't used in a while and read its value.
