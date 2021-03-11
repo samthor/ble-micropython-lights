@@ -49,8 +49,8 @@ pending_event = asyncio.Event()
 ble_lock = asyncio.Lock()
 
 
-SINGLE_BLE = True
-STATUS_EVERY = 5
+_SINGLE_BLE = const(1)
+_STATUS_EVERY = const(5)
 
 
 async def scan_forever():
@@ -61,23 +61,24 @@ async def scan_forever():
     async for result in scanner:
       now = time.time()
 
-      if now > start + STATUS_EVERY:
+      if now > start + _STATUS_EVERY:
         print('.')
         start = now
 
       # The dimmers only have fixed addresses.
-      if result.device.addr_type != 0:
+      if result.device.addr_type != aioble.ADDR_PUBLIC:
         continue
       addr = result.device.addr
 
+      # Only allow lights that we know about. This could later be replaced with an active=True name
+      # check or looking at the payload...
       if addr not in lights_dict:
         continue
-
-      print("Got result", result)
       # name = result.name() or ''
       # if not name.startswith('MICRO_DIMMER'):
       #   continue
 
+      # This is already pending.
       if addr in pending:
         continue
 
@@ -94,10 +95,10 @@ async def scan_forever():
 async def enact_pending_next(addr, task):
   name = lights_dict.get(addr, '?')
   if name not in enabled_lights:
-    # Ignore.
+    # Ignore, but pretend we enacted it anyway.
     return
 
-  device = aioble.Device(0, addr)
+  device = aioble.Device(aioble.ADDR_PUBLIC, addr)
 
   name = lights_dict.get(device.addr, '?')
   connection = await device.connect()
@@ -161,7 +162,7 @@ async def enact_pending():
 async def main():
   asyncio.create_task(enact_pending())
 
-  if SINGLE_BLE:
+  if _SINGLE_BLE:
     while True:
       async with ble_lock:
         await scan_forever()
