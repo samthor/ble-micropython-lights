@@ -38,11 +38,7 @@ def build_lights_dict():
     ('Entryway', b'\x00\x0D\x6F\xC6\xAA\x3B'),
     ('Front', b'\x00\x0D\x6F\xCB\xF1\x99'),
   ]
-
-  d = dict()
-  for name, addr in all_lights:
-    d[addr] = name
-  return d
+  return {addr: name for name, addr in all_lights}
 
 
 lights_dict = build_lights_dict()
@@ -50,12 +46,16 @@ enabled_lights = set(['Kitchen Front', 'Hall', 'Kitchen Rear'])
 
 pending = collections.OrderedDict()
 pending_event = asyncio.Event()
+ble_lock = asyncio.Lock()
 
+
+SINGLE_BLE = True
 STATUS_EVERY = 5
 
 
 async def scan_forever():
   start = time.time()
+  print('scan, start:', start)
 
   async with aioble.scan(0, interval_us=30000, window_us=30000, active=False) as scanner:
     async for result in scanner:
@@ -88,8 +88,7 @@ async def scan_forever():
       if will_notify:
         pending_event.set()
 
-  # should never happen ?!
-  print('scan_forever killed (another connection?)')
+  # if SINGLE_BLE is False, this should never happen
 
 
 async def enact_pending_next(addr, task):
@@ -160,9 +159,15 @@ async def enact_pending():
 
 
 async def main():
-  asyncio.create_task(scan_forever())
+  asyncio.create_task(enact_pending())
 
-  await enact_pending()
+  if SINGLE_BLE:
+    while True:
+      async with ble_lock:
+        await scan_forever()
+  else:
+    await scan_forever()
+    raise Exception('scan_forever failed')
 
 
 asyncio.run(main())
