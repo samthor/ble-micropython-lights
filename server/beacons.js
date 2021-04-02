@@ -1,7 +1,7 @@
 import * as net from 'net';
 import * as events from 'events';
 
-const PACKET_SIZE = 8;
+const PACKET_SIZE = 16;
 
 
 export async function createBeaconServer(port = 9999) {
@@ -20,9 +20,8 @@ export async function createBeaconServer(port = 9999) {
     socket.on('data', (data) => {
       while (data.length + pending.length >= PACKET_SIZE) {
         const front = PACKET_SIZE - pending.length;
-        const next = Buffer.concat([pending, data.slice(0, front)]);
 
-        // TODO: decode?
+        const next = Buffer.concat([pending, data.slice(0, front)]);
         bs.emit('update', next);
 
         data = data.subarray(front);

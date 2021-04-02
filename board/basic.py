@@ -38,6 +38,9 @@ _COMMAND_EXPIRY_MS = const(5000)
 _CLEANUP_TASK_EVERY_MS = const(1000 * 60)
 _STATE_EXPIRY_MS = const(1000 * 60 * 60)  # 1hr
 
+_BRIGHT_MAX = const(10000)
+_BRIGHT_BITS = const(10)
+
 _MCAST_PORT = const(9999)
 
 
@@ -56,12 +59,16 @@ class SeenState(object):
 
 
 class PendingCommand(object):
-  def __init__(self, set_on = None, set_brightness = None):
-    self.set_on = set_on
-    self.set_brightness = set_brightness
-    self.when = time.ticks_ms()
+  def __init__(self):
+    self.set_on = None
+    self.toggle_on = None
+    self.set_brightness = None
+    self.when = None
 
   def valid(self):
+    if self.when is None:
+      # only check validity from the first time this was attempted
+      self.when = time.ticks_ms()
     return self.when + _COMMAND_EXPIRY_MS >= time.ticks_ms()
 
 
@@ -95,9 +102,13 @@ async def scan():
         continue
       key, data = raw
 
-      generation = data[5]        # settings revision count (some change)
-      is_on = bool(data[6] & 15)  # Clipsal app checks low bits
-      brightness = data[7]        # 0-255
+      generation = data[5]                # settings revision count (some change)
+      is_on = bool(data[6] & 15)          # Clipsal app checks low bits
+      b_ratio = data[7] / 255.0
+      brightness = int(round(b_ratio * _BRIGHT_MAX))
+
+      if is_on and not brightness:
+        brightness = 1
 
       prev = seen_states.get(addr, None)
       if prev and prev.is_on == is_on and prev.brightness == brightness:
@@ -107,7 +118,8 @@ async def scan():
       state = SeenState(is_on, brightness)
       seen_states[addr] = state
       pending_update_event.set()
-      print('device', name, 'on=', is_on, 'state', brightness)
+      print('raw data', list(data))
+      print('device', name, 'on=', is_on, 'brightness=', brightness)
 
 
 async def scan_forever():
@@ -116,47 +128,30 @@ async def scan_forever():
     await asyncio.sleep_ms(_DELAY_MS)
 
 
-async def switchcheck():
-  sw = pyb.Switch()
-  while True:
-    await asyncio.sleep_ms(33)
-    state = sw.value()
-    if not state:
-      continue
-
-    # For now, this tells a specific light to toggle.
-
-    t = b'\x00\x0D\x6F\xC6\xAA\x79'
-    if t in pending_command:
-      continue
-
-    pending_lock.release()  # allow task to run
-    pending_command[t] = PendingCommand()
-    pyb.LED(1).on()
-
-
-async def enact_internal(connection, command, prev_state):
+async def enact_internal(connection, command):
   await connection.pair(timeout_ms = 10 * 1000)
 
   service = await connection.service(control_service_uuid)
   if not service:
     raise Exception('could not load service')
 
-  state_char = await service.characteristic(state_uuid)
-  #          level_char = await service.characteristic(level_uuid)
+  if command.set_on is not None:
+    state_char = await service.characteristic(state_uuid)
+    update = (command.set_on and b'\x01' or b'\00')
+    print('writing state', update)
+    await state_char.write(update, True)
 
-  set_on = command.set_on
-  if prev_state and set_on is None:
-    set_on = not prev_state.is_on
+  elif command.toggle_on:
+    state_char = await service.characteristic(state_uuid)
+    update = b'\x02'
+    print('toggling state', update)
+    await state_char.write(update, True)
 
-  update = (set_on and b'\x01' or b'\00')
-  print('writing', update)
-  await state_char.write(update, True)
-
-  # We don't update the last seen time here, but just pre-empt any scan updates
-  # if we changed states.
-  if prev_state:
-    prev_state.is_on = set_on
+  if command.set_brightness is not None:
+    level_char = await service.characteristic(level_uuid)
+    update = command.set_brightness.to_bytes(2, 'little')  # because why the fuck not
+    print('toggling state', update)
+    await level_char.write(update, True)
 
 
 async def enact():
@@ -169,7 +164,6 @@ async def enact():
     # Find a random next command to try.
     addr = random.choice(list(pending_command.keys()))
     command = pending_command[addr]
-    prev_state = seen_states.get(addr, None)
     ok = True
 
     device = aioble.Device(0, addr)
@@ -177,14 +171,15 @@ async def enact():
       print('enact', addr)
       connection = await device.connect()
       async with connection:
-        await enact_internal(connection, command, prev_state)
+        await enact_internal(connection, command)
+      print('enacted!', addr)
 
     except Exception as e:
       ok = False
       print('exception', e.__class__, 'for', addr)
-      # print('>----', addr)
-      # sys.print_exception(e)
-      # print('<----')
+      print('>----', addr)
+      sys.print_exception(e)
+      print('<----')
 
     await asyncio.sleep_ms(_NOOP_MS)
 
@@ -200,31 +195,68 @@ async def enact():
       ble_lock.release()
 
 
+
+async def read_command(mac, rest):
+  pc = PendingCommand()
+
+  # control on/off (or toggle on/off)
+  if rest[1] == 2:
+    pc.toggle_on = True
+  elif rest[1] == 1:
+    pc.set_on = True
+  elif rest[1] == 0:
+    pc.set_on = False
+
+  brightness = int.from_bytes(rest[2:4], 'big')
+  if brightness <= _BRIGHT_MAX:
+    pc.set_brightness = brightness
+
+  print('command', mac, 'set_on', pc.set_on, 'toggle_on', pc.toggle_on, 'set_brightness', pc.set_brightness)
+  pending_command[mac] = pc
+  pyb.LED(1).on()
+
+  pending_lock.release()  # allow task to run
+
+
 async def network_coordinator():
   failures = 0
 
   while True:
     try:
-      print('connecting to', server_addr + ':' + str(server_port))
       reader, writer = await asyncio.open_connection(server_addr, server_port)
       failures = 0
 
+      print('connected to', server_addr + ':' + str(server_port))
       asyncio.create_task(network_update(writer))
 
+      pending = b''
       while True:
-        command = await reader.read(1024)
-        if not len(command):
+        part = await reader.read(1024)
+        if not len(part):
           break
+        pending += part
+        print('got pending', len(pending))
 
-        print('got command', command)
+        while len(pending) >= 16:
+          command = pending[0:16]
+          pending = pending[16:]
+
+          mac = command[0:6]
+          rest = command[6:]
+          await read_command(mac, rest)
 
     except Exception as e:
       print('exception network', e.__class__)
+      print('>----')
+      sys.print_exception(e)
+      print('<----')
       failures += 1
       if failures > _BACKOFF_MAX:
         failures = _BACKOFF_MAX
 
+
     delay = _BACKOFF_MS * failures
+    print('network delaying', delay)
     await asyncio.sleep_ms(delay)
 
 
@@ -239,9 +271,10 @@ async def network_update(writer):
       if sent_gen == state.gen:
         continue
 
-      payload = addr + bytes([state.is_on, state.brightness])
-      if len(payload) != 8:
-        raise Exception('could not get 8 bytes to send')
+      # x55 magic for light
+      payload = addr + b'\x55' + bytes([state.is_on]) + state.brightness.to_bytes(2, 'big') + bytes([0, 0, 0, 0, 0, 0])
+      if len(payload) != 16:
+        raise Exception('could not get 16 bytes to send')
       writer.write(payload)
       await writer.drain()
 
@@ -254,11 +287,8 @@ async def network_update(writer):
 async def main():
   await pending_lock.acquire()
 
-  asyncio.create_task(switchcheck())
   asyncio.create_task(enact())
-
   asyncio.create_task(scan_forever())
-
   asyncio.create_task(network_coordinator())
 
   while True:

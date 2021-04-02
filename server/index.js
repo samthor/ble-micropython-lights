@@ -29,7 +29,8 @@ const updateHandler = (buffer) => {
   }
 
   // TODO: expire if we don't see update for ~1hr
-  allLights[l.mac] = l;
+  console.warn('light', l);
+  allLights.set(l.mac, l);
 }
 bs.on('update', updateHandler);
 
@@ -39,8 +40,7 @@ bs.on('update', updateHandler);
  */
 const socketHandler = (socket) => {
   socket.onmessage = (event) => {
-    // TODO: handle request from client
-    console.warn('got event', event.data);
+    bs.announce(event.data);
   };
 
   allLights.forEach((l) => {
