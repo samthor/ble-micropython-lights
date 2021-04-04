@@ -24,10 +24,18 @@ server_addr = '192.168.86.39'
 server_port = 9999
 
 
-control_service_uuid = bluetooth.UUID('720a9080-9c7d-11e5-a7e3-0002a5d5c51b')
+only_connect_to = [
+  'MICRO_DIMMER_AA79',
+]
 
+
+control_service_uuid = bluetooth.UUID('720a9080-9c7d-11e5-a7e3-0002a5d5c51b')
 state_uuid = bluetooth.UUID('720a9081-9c7d-11e5-a7e3-0002a5d5c51b')
 level_uuid = bluetooth.UUID('720a9082-9c7d-11e5-a7e3-0002a5d5c51b')
+
+command_service_uuid = bluetooth.UUID('720a7080-9c7d-11e5-a7e3-0002a5d5c51b')
+request_char_uuid = bluetooth.UUID('720a7081-9c7d-11e5-a7e3-0002a5d5c51b')
+response_char_uuid = bluetooth.UUID('720a7082-9c7d-11e5-a7e3-0002a5d5c51b')
 
 
 _NOOP_MS = const(10)
@@ -37,6 +45,8 @@ _BACKOFF_MAX = const(8)
 _COMMAND_EXPIRY_MS = const(5000)
 _CLEANUP_TASK_EVERY_MS = const(1000 * 60)
 _STATE_EXPIRY_MS = const(1000 * 60 * 60)  # 1hr
+
+_PAIR_TIMEOUT_MS = const(30 * 1000)
 
 _BRIGHT_MAX = const(10000)
 _BRIGHT_BITS = const(10)
@@ -71,9 +81,39 @@ class PendingCommand(object):
       self.when = time.ticks_ms()
     return self.when + _COMMAND_EXPIRY_MS >= time.ticks_ms()
 
+  def __str__(self):
+    parts = ['PendingCommand']
+    if self.set_on is not None:
+      parts.append('set_on=' + str(self.set_on))
+    if self.toggle_on is not None:
+      parts.append('toggle_on=' + str(self.toggle_on))
+    if self.set_brightness is not None:
+      parts.append('set_brightness=' + str(self.set_brightness))
+    if self.when is not None:
+      parts.append('when=' + str(self.when))
+    return '<' + ' '.join(parts) + '>'
 
 seen_states = {}
 pending_command = {}
+
+
+def build_read_command(register, length = 8):
+  if length % 2:
+    raise Exception('expected even read')
+  return bytes([255, 255, 6, 255, 67]) + register.to_bytes(2, 'big') + (length // 2).to_bytes(2, 'big')
+
+
+def build_write_command(register, value, length = 8):
+  if length % 2:
+    raise Exception('expected even write')
+  half = length // 2
+
+  while len(value) < length:
+    value += b'\x00'
+
+  out = bytes([255, 255, length + 7, 255, 16])
+  out += register.to_bytes(2, 'big') + half.to_bytes(2, 'big') + bytes([length]) + value
+  return out
 
 
 async def scan():
@@ -118,8 +158,17 @@ async def scan():
       state = SeenState(is_on, brightness)
       seen_states[addr] = state
       pending_update_event.set()
-      print('raw data', list(data))
-      print('device', name, 'on=', is_on, 'brightness=', brightness)
+      print('(scan) device', name, 'on=', is_on, 'brightness=', brightness)
+
+      # Zero command on first seen
+      if (not prev) and (addr not in pending_command):
+        if len(only_connect_to):
+          for check in only_connect_to:
+            if name.startswith(check):
+              break
+          else:
+            continue
+        insert_command(addr, PendingCommand())
 
 
 async def scan_forever():
@@ -128,8 +177,24 @@ async def scan_forever():
     await asyncio.sleep_ms(_DELAY_MS)
 
 
+def log_exception(e, addr=None):
+  name = e.__class__.__name__
+  known_names = ['TimeoutError', 'DeviceDisconnectedError']
+  if name in known_names:
+    return name
+  if name == 'OSError':
+    return name + ': ' + str(e.args[0])
+
+  print('exception', e.__class__, 'for', addr)
+  print('>----', addr)
+  sys.print_exception(e)
+  print('<----')
+  return name
+
+
 async def enact_internal(connection, command):
-  await connection.pair(timeout_ms = 10 * 1000)
+  print('encrypted? (i.e., probably paired)', connection.encrypted)
+  await connection.pair(timeout_ms = _PAIR_TIMEOUT_MS)
 
   service = await connection.service(control_service_uuid)
   if not service:
@@ -154,6 +219,23 @@ async def enact_internal(connection, command):
     await level_char.write(update, True)
 
 
+  # get some info while we're here
+  rr_service = await connection.service(command_service_uuid)
+  request_char = await rr_service.characteristic(request_char_uuid)
+  response_char = await rr_service.characteristic(response_char_uuid)
+
+  await response_char.subscribe()
+
+  # We need this hack before any notifications arrive.
+  response_char._notify_data = True
+  await response_char.notified()
+
+  print('writing name command...', list(build_read_command(0x1002, 12)))
+  await request_char.write(build_read_command(0x1002, 12), True)
+  data = await response_char.notified(10 * 1000)
+  print('got name response', data, data[8:].decode('utf-8'))
+
+
 async def enact():
   while True:
     if not len(pending_command):
@@ -168,7 +250,7 @@ async def enact():
 
     device = aioble.Device(0, addr)
     try:
-      print('enact', addr)
+      print('enact', addr, '...')
       connection = await device.connect()
       async with connection:
         await enact_internal(connection, command)
@@ -176,12 +258,9 @@ async def enact():
 
     except Exception as e:
       ok = False
-      print('exception', e.__class__, 'for', addr)
-      print('>----', addr)
-      sys.print_exception(e)
-      print('<----')
+      print(log_exception(e, addr))
 
-    await asyncio.sleep_ms(_NOOP_MS)
+    await asyncio.sleep_ms(_DELAY_MS)
 
     # If this is still within a valid window, try again.
     if not ok:
@@ -194,6 +273,14 @@ async def enact():
     if not len(pending_command):
       ble_lock.release()
 
+
+def insert_command(addr, pc):
+  print('inserting', addr, pc)
+  if not len(pending_command):
+    pending_lock.release()  # allow task to run
+
+  pending_command[addr] = pc
+  pyb.LED(1).on()
 
 
 async def read_command(mac, rest):
@@ -211,12 +298,7 @@ async def read_command(mac, rest):
   if brightness <= _BRIGHT_MAX:
     pc.set_brightness = brightness
 
-  print('command', mac, 'set_on', pc.set_on, 'toggle_on', pc.toggle_on, 'set_brightness', pc.set_brightness)
-  pending_command[mac] = pc
-  pyb.LED(1).on()
-
-  pending_lock.release()  # allow task to run
-
+  insert_command(mac, pc)
 
 async def network_coordinator():
   failures = 0
@@ -246,10 +328,7 @@ async def network_coordinator():
           await read_command(mac, rest)
 
     except Exception as e:
-      print('exception network', e.__class__)
-      print('>----')
-      sys.print_exception(e)
-      print('<----')
+      print(log_exception(e, server_addr))
       failures += 1
       if failures > _BACKOFF_MAX:
         failures = _BACKOFF_MAX
@@ -264,24 +343,28 @@ async def network_coordinator():
 async def network_update(writer):
   sent = {}
 
-  while True:
-    for addr in seen_states:
-      state = seen_states[addr]
-      sent_gen = sent.get(addr, 0)
-      if sent_gen == state.gen:
-        continue
+  try:
+    while True:
+      for addr in seen_states:
+        state = seen_states[addr]
+        sent_gen = sent.get(addr, 0)
+        if sent_gen == state.gen:
+          continue
 
-      # x55 magic for light
-      payload = addr + b'\x55' + bytes([state.is_on]) + state.brightness.to_bytes(2, 'big') + bytes([0, 0, 0, 0, 0, 0])
-      if len(payload) != 16:
-        raise Exception('could not get 16 bytes to send')
-      writer.write(payload)
-      await writer.drain()
+        # x55 magic for light
+        payload = addr + b'\x55' + bytes([state.is_on]) + state.brightness.to_bytes(2, 'big') + bytes([0, 0, 0, 0, 0, 0])
+        if len(payload) != 16:
+          raise Exception('could not get 16 bytes to send')
+        writer.write(payload)
+        await writer.drain()
 
-      sent[addr] = state.gen
+        sent[addr] = state.gen
 
-    await pending_update_event.wait()
-    pending_update_event.clear()
+      await pending_update_event.wait()
+      pending_update_event.clear()
+
+  except Exception as e:
+    print(log_exception(e, server_addr))
 
 
 async def main():
