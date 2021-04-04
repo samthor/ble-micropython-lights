@@ -1,6 +1,7 @@
 import WebSocket from 'ws';
 import * as http from 'http';
 import * as events from 'events';
+import { listenPromise } from './lib/server.js';
 
 
 export async function createWebSocketServer(port = 9998) {
@@ -23,9 +24,6 @@ export async function createWebSocketServer(port = 9998) {
     }
   });
 
-  await /** @type {Promise<void>} */ (new Promise((r) => {
-    httpServer.listen(port, () => r());
-  }));
-
+  await listenPromise(httpServer, port);
   return emitter;
 }

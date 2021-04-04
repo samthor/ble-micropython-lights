@@ -1,5 +1,6 @@
 import * as net from 'net';
 import * as events from 'events';
+import { listenPromise } from './lib/server.js';
 
 const PACKET_SIZE = 16;
 
@@ -40,10 +41,7 @@ export async function createBeaconServer(port = 9999) {
     throw err;
   });
 
-  await /** @type {Promise<void>} */ (new Promise((r) => {
-    server.listen(port, () => r());
-  }));
-
+  await listenPromise(server, port);
   return bs;
 }
 

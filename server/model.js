@@ -2,6 +2,7 @@
 import {performance} from 'perf_hooks';
 
 
+const LIGHT_BEACON_TYPE = 0x55;
 const BRIGHT_MAX = 10_000;
 
 
@@ -13,6 +14,8 @@ export class Light {
   when = performance.now();
 
   /**
+   * // TODO: do json-encoding
+   *
    * @return {Buffer}
    */
   encode() {
@@ -42,11 +45,25 @@ export function decodeBuffer(buffer) {
     return null;
   }
 
-  const l = new Light();
+  const mac = String.fromCharCode(...buffer.slice(0, 6));
 
-  l.mac = String.fromCharCode(...buffer.slice(0, 6));
-  l.isOn = Boolean(buffer[7]);
-  l.brightness = buffer.readUInt16BE(8) / BRIGHT_MAX;
+  const type = buffer[6];
+  switch (type) {
+    case LIGHT_BEACON_TYPE: {
+      const l = new Light();
 
-  return l;
+      // 0-6: mac
+      // 6: magic for type
+      // 7: on/off bit
+      // 8: brightness [0,BRIGHT_MAX]
+      // 9-15: ???
+
+      l.mac = mac;
+      l.isOn = Boolean(buffer[7]);
+      l.brightness = buffer.readUInt16BE(8) / BRIGHT_MAX;
+      return l;
+    }
+  }
+
+  throw new Error(`unsupported beacon type: ${type}`);
 }

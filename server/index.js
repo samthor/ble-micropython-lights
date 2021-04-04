@@ -3,9 +3,11 @@
 import { createBeaconServer } from './beacons.js';
 import { createWebSocketServer } from './http.js';
 import * as model from './model.js';
+import { createSmartHomeActionsSever } from './smarthome.js';
 
 const bs = await createBeaconServer();
 const wss = await createWebSocketServer();
+const shactions = await createSmartHomeActionsSever();
 
 
 /** @type {Set<WebSocket>} */
