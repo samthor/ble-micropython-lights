@@ -69,6 +69,8 @@ async function main() {
       stateCache[id] = device;
     });
 
+    syncResponse.devices.sort(({id: a}, {id: b}) => a.localeCompare(b));
+
     devicesNode.textContent = '';
     for (const device of syncResponse.devices) {
       const state = stateCache[device.id] ?? {};
@@ -77,9 +79,13 @@ async function main() {
       liNode.textContent = device.id;
       devicesNode.append(liNode);
 
+      liNode.append(` ${device.type}`);
+
       if (state.online === false) {
         liNode.append(` offline`);
       }
+      liNode.append(`: ${device.name.name}`);
+      liNode.append('\n');
     }
 
     await sleep(10 * 1000);
