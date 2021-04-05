@@ -71,21 +71,23 @@ export class ClipsalPower extends Device {
     for (const e of exec) {
       switch (e.command) {
         case 'action.devices.commands.OnOff': {
-          /** @type {boolean} */
-          const on = e.params['on'];
+          const on = Boolean(e.params.on);
           payload[1] = on ? 1 : 0;
           break;
         }
 
         case 'action.devices.commands.BrightnessAbsolute': {
-          /** @type {number} */
-          const brightness = e.params['brightness'];
+          const brightness = /** @type {number} */ (e.params.brightness);
           payload[2] = brightness;
           break;
         }
 
         default:
           console.warn('got unhandled command on light:', e.command);
+          return {
+            online: true,
+            errorCode: 'functionNotSupported',
+          };
       }
     }
 

@@ -107,16 +107,24 @@ export async function createSmartHomeActionsSever(port = 8888) {
           if (!device) {
             return {
               status: 'ERROR',
-              errorCode: 'unableToLocateDevice',
+              errorCode: 'deviceNotFound',
             };
           }
 
-          const result = await device.exec(exec);
-          return {
+          const execResult = await device.exec(exec);
+          /** @type {types.AssistantCommandResult} */
+          const out = {
             ids: [id],
-            status: 'SUCCESS',
-            ...result,
+            status: execResult.errorCode ? 'ERROR' : 'SUCCESS',
+            states: execResult,
           };
+
+          if (!execResult.errorCode) {
+            delete execResult.errorCode;
+            out.states = execResult;
+          }
+
+          return out;
         }));
 
         return {
@@ -146,7 +154,9 @@ export async function createSmartHomeActionsSever(port = 8888) {
       throw new Error(`expected single input, had: ${payload.inputs.length}`);
     }
     const only = payload.inputs[0];
+    console.warn('got sh-request', JSON.stringify(only));
     const out = await inputHandler(only);
+    console.warn('got sh-response', out);
 
     return {
       requestId: payload.requestId,

@@ -27,9 +27,19 @@ export interface DeviceKey {
   customData?: {[name: string]: any},
 }
 
+export interface AssistantExecParams {
+  on?: boolean;
+  thermostatTemperatureSetpointHigh?: number;
+  thermostatTemperatureSetpointLow?: number;
+  thermostatTemperatureSetpoint?: number;
+  thermostatMode?: string;
+  fanSpeed?: string;
+  brightness?: number;
+}
+
 export interface AssistantExec {
   command: string,
-  params: {[name: string]: any},
+  params: AssistantExecParams,
 }
 
 export interface DeviceInfo {
@@ -55,17 +65,25 @@ export interface Device extends DeviceKey {
 }
 
 export interface DeviceState {
+  errorCode?: string;
+
   online: boolean;
 
   on?: boolean;
   brightness?: number;
+  thermostatTemperatureSetpoint?: number;
+  thermostatTemperatureAmbient?: number;
+  thermostatTemperatureSetpointLow?: number;
+  thermostatTemperatureSetpointHigh?: number;
+  thermostatMode?: string;
+  currentFanSpeedSetting?: string;
 }
 
 export interface AssistantCommandResult {
   ids: string[],
   status: string,
-  errorCode: string,
-  states: {[name: string]: any},
+  errorCode?: string,
+  states?: DeviceState,
 }
 
 export interface SyncResponse {
@@ -77,13 +95,13 @@ export interface QueryResponse {
   devices: {[id: string]: DeviceState},
 }
 
+/**
+ * This is a device as configured in your code.
+ */
 export interface GenericDevice {
   type: string,
   name: string,
   mac?: string,
-
-  isOn?: boolean,
-  brightness?: number,
 }
 
 export type DevicesStore = {[mac: string]: GenericDevice};

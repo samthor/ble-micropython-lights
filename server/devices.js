@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import JSON5 from 'json5';
 import { ClipsalPower } from './types/clipsal.js';
 import { broadcastAllBeacons } from './beacons.js';
+import { DaikinAC } from './types/daikin.js';
 
 
 const devicesPath = new URL('../devices.json5', import.meta.url);
@@ -44,6 +45,10 @@ for (const mac in devicesStore) {
   switch (data.type) {
     case 'clipsal':
       model = new ClipsalPower(broadcast);
+      break;
+
+    case 'daikin-ac-wifi':
+      model = new DaikinAC(mac);
       break;
 
     default:
@@ -173,15 +178,15 @@ function convertToSmartHome(raw) {
         'action.devices.traits.TemperatureSetting',
         'action.devices.traits.FanSpeed',
       );
-      attributes['availableThermostatModes'] = ['heat', 'cool', 'auto', 'fan-only'];
+      attributes['availableThermostatModes'] = ['on', 'off', 'heat', 'cool', 'heatcool', 'fan-only', 'dry'];
       attributes['thermostatTemperatureUnit'] = 'C';
       attributes['thermostatTemperatureRange'] = {
-        minThresholdCelsius: 19,  // actually 10
+        minThresholdCelsius: 18,  // actually 10
         maxThresholdCelsius: 25,  // actually 41
       };
+      attributes['bufferRangeCelsius'] = 0;
       attributes['availableFanSpeeds'] = {
         ordered: true,
-        supportsFanSpeedPercent: true,
         speeds: [
           {
             speed_name: 'speed_quiet',

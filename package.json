@@ -5,6 +5,7 @@
   },
   "dependencies": {
     "json5": "^2.2.0",
+    "node-fetch": "^2.6.1",
     "ws": "^7.4.4"
   }
 }

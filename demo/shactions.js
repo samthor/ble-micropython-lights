@@ -179,15 +179,6 @@ async function doRequest(intent, payload = undefined) {
 }
 
 
-/**
- * @param {types.AssistantCommand} command
- */
-async function doCommand(command) {
-  const response = await doRequest('action.devices.EXECUTE', {commands: [command]});
-  console.warn('command resp', response);
-}
-
-
 async function main() {
   const devicesNode = /** @type {HTMLElement} */ (document.getElementById('devices'));
 
@@ -202,9 +193,11 @@ async function main() {
     socket.onclose = (event) => r();
   }));
 
-  socket.onmessage = (event) => {
-    /** @type {{id: string, state: types.DeviceState}} */
-    const {id, state} = JSON.parse(event.data);
+  /**
+   * @param {string} id
+   * @param {types.DeviceState} state
+   */
+  const updateState = (id, state) => {
     const q = `[data-id="${id}"]`;
     const el = /** @type {DeviceElement=} */ (document.body.querySelector(q));
     if (el) {
@@ -213,6 +206,11 @@ async function main() {
     }
   };
 
+  socket.onmessage = (event) => {
+    /** @type {{id: string, state: types.DeviceState}} */
+    const {id, state} = JSON.parse(event.data);
+    updateState(id, state);
+  };
 
   for (;;) {
     /** @type {types.SyncResponse} */
@@ -260,7 +258,19 @@ async function main() {
           devices: [{id: device.id}],
           execution: [ce.detail],
         };
-        doCommand(command);
+
+        const execPromise = doRequest('action.devices.EXECUTE', {commands: [command]});
+        execPromise.then((response) => {
+          response.commands.forEach((raw) => {
+            const r = /** @type {types.AssistantCommandResult} */ (raw);
+            if (r.errorCode || !r.states) {
+              console.warn('failed to do thing', r.errorCode);
+              return;
+            }
+            const state = r.states;
+            r.ids.forEach((id) => updateState(id, state));
+          });
+        });
       });
 
       el.device = device;
@@ -272,8 +282,6 @@ async function main() {
       throw new Error(`socket closed`);
     }
   }
-
-
 }
 
 
