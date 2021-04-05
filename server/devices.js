@@ -1,9 +1,12 @@
 
 import * as types from '../types/index.js';
+import {Device} from './model.js';
 import * as fs from 'fs';
 
 // @ts-ignore
 import JSON5 from 'json5';
+import { ClipsalPower } from './types/clipsal.js';
+import { broadcastAllBeacons } from './beacons.js';
 
 
 const devicesPath = new URL('../devices.json5', import.meta.url);
@@ -13,22 +16,113 @@ const devicesPath = new URL('../devices.json5', import.meta.url);
 const devicesStore = JSON5.parse(fs.readFileSync(devicesPath));
 console.warn('startup has', Object.keys(devicesStore).length, 'known:', devicesStore);
 
+/** @type {{[id: string]: Device}} */
+const models = {};
+
 for (const mac in devicesStore) {
-  devicesStore[mac].mac = mac;
+  const data = devicesStore[mac];
+  data.mac = mac;
+
+  // Converts "aa:bb:cc:dd:ee:ff" to a 6-byte buffer.
+  const decodedMac = Buffer.from(mac.split(':').map((raw) => Number('0x' + raw)));
+  if (decodedMac.length !== 6) {
+    throw new Error(`got bad mac: ${mac}`);
+  }
+  /**
+   * @param {Buffer} payload
+   */
+  const broadcast = (payload) => {
+    if (payload.length !== 10) {
+      throw new Error(`got bad payload: ${payload}`);
+    }
+    return broadcastAllBeacons(Buffer.concat([decodedMac, payload]));
+  };
+
+  /** @type {Device} */
+  let model;
+
+  switch (data.type) {
+    case 'clipsal':
+      model = new ClipsalPower(broadcast);
+      break;
+
+    default:
+      model = new Device();
+  }
+
+  models[mac] = model;
+}
+
+
+/** @type {Set<(id: string, state: types.DeviceState, change: boolean) => void>} */
+const changeSubscribers = new Set();
+
+
+/**
+ * @param {(id: string, state: types.DeviceState, change: boolean) => void} sub
+ */
+export function subscribeToChanges(sub) {
+  changeSubscribers.add(sub);
 }
 
 
 /**
- * @param {string} mac
- * @return {types.GenericDevice}
+ * @param {(id: string, state: types.DeviceState, change: boolean) => void} sub
  */
-export function getByMac(mac) {
-  return devicesStore[mac] ?? {type: '?', name: mac, mac};
+export function unsubscribeFromChanges(sub) {
+  changeSubscribers.delete(sub);
 }
 
 
-export function allDevices() {
-  return Object.values(devicesStore);
+/**
+ * @param {Buffer} buffer
+ */
+export function updateViaBeacon(buffer) {
+  if (buffer.length !== 16) {
+    console.warn(`got bad incoming buffer:`, buffer.length);
+    return;
+  }
+
+  const macParts = [];
+  for (let i = 0; i < 6; ++i) {
+    macParts.push(buffer[i].toString(16).padStart(2, '0'));
+  }
+  const mac = macParts.join(':').toLowerCase();
+
+  const device = getByMac(mac);
+  if (!device) {
+    console.warn(`got beacon update for unknown device:`, mac);
+    return;
+  }
+
+  const change = device.updateViaBeacon(buffer.slice(6));
+  Promise.resolve().then(async () => {
+    try {
+      const state = await device.state();
+      changeSubscribers.forEach((sub) => sub(mac, state, change));
+
+      if (change) {
+        console.warn('change', mac, state);
+      }
+    } catch (e) {
+      console.warn('got err rebroadcasting state', e);
+    }
+  });
+}
+
+
+
+/**
+ * @param {string} mac
+ * @return {Device?}
+ */
+export function getByMac(mac) {
+  return models[mac] ?? null;
+}
+
+
+export function allSmartHomeDevices() {
+  return Object.values(devicesStore).map(convertToSmartHome);
 }
 
 
@@ -36,7 +130,7 @@ export function allDevices() {
  * @param {types.GenericDevice} raw
  * @return {types.Device}
  */
-export function convertToSmartHome(raw) {
+function convertToSmartHome(raw) {
   if (!raw.mac) {
     throw new Error(`missing mac`);
   }
@@ -57,7 +151,8 @@ export function convertToSmartHome(raw) {
   const nicknames = [];
 
   switch (raw.type) {
-    case 'clipsal-light':
+    case 'clipsal':
+      // TODO: these are switches, could be anything
       info.manufacturer = 'Clipsal';
       info.model = 'Smart Light';
       type = 'action.devices.types.LIGHT';

@@ -1,29 +1,44 @@
 import * as net from 'net';
 import * as events from 'events';
 import { listenPromise } from './lib/server.js';
+import { updateViaBeacon } from './devices.js';
 
 const PACKET_SIZE = 16;
 
+/** @type {Set<net.Socket>} */
+const active = new Set();
 
-export async function createBeaconServer(port = 9999) {
-  /** @type {Set<net.Socket>} */
-  const active = new Set();
+/**
+ * @param {Buffer} payload
+ * @return {number}
+ */
+export function broadcastAllBeacons(payload) {
+  console.warn('broadcast payload', payload, 'to sockets', active.size);
 
-  const bs = new BeaconServer((buffer) => {
-    active.forEach((socket) => socket.write(buffer));
-    return active.size;
+  active.forEach((socket) => {
+    socket.write(payload, (err) => {
+      if (err) {
+        console.warn('could not write payload', payload, err);
+      }
+    });
   });
 
+  return active.size;
+}
+
+
+export async function createBeaconServer(port = 9999) {
   const server = net.createServer((socket) => {
     active.add(socket);
     let pending = Buffer.from([]);
+    console.warn('got new socket', socket.address());
 
     socket.on('data', (data) => {
       while (data.length + pending.length >= PACKET_SIZE) {
         const front = PACKET_SIZE - pending.length;
 
         const next = Buffer.concat([pending, data.slice(0, front)]);
-        bs.emit('update', next);
+        updateViaBeacon(next);
 
         data = data.subarray(front);
       }
@@ -33,12 +48,15 @@ export async function createBeaconServer(port = 9999) {
 
     // We need this otherwise Node will throw and crash.
     socket.on('error', (err) => {
-      console.warn('websocket err', err);
+      console.warn('socket err', err);
       socket.destroy();
     });
 
     socket.on('close', (hadError) => {
-      console.warn('socket close', hadError);
+      if (hadError) {
+        console.warn('socket close with error');
+      }
+      console.warn('socket closed', socket.address());
       active.delete(socket);
     });
   });
@@ -48,18 +66,4 @@ export async function createBeaconServer(port = 9999) {
   });
 
   await listenPromise(server, port);
-  return bs;
-}
-
-
-class BeaconServer extends events.EventEmitter {
-
-  /**
-   * @param {(buffer: Buffer) => number} announce
-   */
-  constructor(announce) {
-    super();
-    this.announce = announce;
-  }
-
 }

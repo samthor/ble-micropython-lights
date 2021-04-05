@@ -1,59 +1,59 @@
 {
   // Lights
   '00:0d:6f:c6:aa:f5': {
-    type: 'clipsal-light',
+    type: 'clipsal',
     name: 'Ensuite',
   },
   '00:0d:6f:b3:df:9a': {
-    type: 'clipsal-light',
+    type: 'clipsal',
     name: 'Bedroom Rear',
   },
   '00:0d:6f:c6:aa:f9': {
-    type: 'clipsal-light',
+    type: 'clipsal',
     name: 'Bedroom Front',
   },
   '00:0d:6f:c6:aa:88': {
-    type: 'clipsal-light',
+    type: 'clipsal',
     name: 'Loft',
   },
   '00:0d:6f:ba:70:7e': {
-    type: 'clipsal-light',
+    type: 'clipsal',
     name: 'Stairs',
   },
   '00:0d:6f:cd:90:e0': {
-    type: 'clipsal-light',
+    type: 'clipsal',
     name: 'Bathroom',
   },
   '00:0d:6f:c6:aa:79': {
-    type: 'clipsal-light',
+    type: 'clipsal',
     name: 'Hall',
   },
   '00:0d:6f:b3:df:37': {
-    type: 'clipsal-light',
+    type: 'clipsal',
     name: 'Kitchen Rear',
   },
   '00:0d:6f:cd:9b:a6': {
-    type: 'clipsal-light',
+    type: 'clipsal',
     name: 'Kitchen Mid',
   },
   '00:0d:6f:cd:94:e1': {
-    type: 'clipsal-light',
+    type: 'clipsal',
     name: 'Kitchen Front',
   },
   '00:0d:6f:cf:b6:d3': {
-    type: 'clipsal-light',
+    type: 'clipsal',
     name: 'Living TV side',
   },
   '00:0d:6f:ba:6e:3d': {
-    type: 'clipsal-light',
+    type: 'clipsal',
     name: 'Living couch',
   },
   '00:0d:6f:c6:aa:3b': {
-    type: 'clipsal-light',
+    type: 'clipsal',
     name: 'Entryway',
   },
   '00:0d:6f:cb:f1:99': {
-    type: 'clipsal-light',
+    type: 'clipsal',
     name: 'Front',
   },
   // AC units

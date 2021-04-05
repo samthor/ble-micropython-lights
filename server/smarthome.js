@@ -1,7 +1,8 @@
 import * as http from 'http';
 import { listenPromise } from './lib/server.js';
 import * as types from '../types/index.js';
-import { allDevices, convertToSmartHome } from './devices.js';
+import { allSmartHomeDevices, getByMac, subscribeToChanges, unsubscribeFromChanges } from './devices.js';
+import ws from 'ws';
 
 
 /**
@@ -31,6 +32,25 @@ async function parsePostJson(req) {
 }
 
 
+/**
+ * @param {WebSocket} socket
+ */
+ function handleSocket(socket) {
+  /**
+   * @param {string} id
+   * @param {types.DeviceState} state
+   */
+  const sub = (id, state) => {
+    socket.send(JSON.stringify({id, state}));
+  };
+
+  subscribeToChanges(sub);
+  socket.onclose = () => {
+    unsubscribeFromChanges(sub);
+  };
+}
+
+
 export async function createSmartHomeActionsSever(port = 8888) {
 
   /**
@@ -39,23 +59,23 @@ export async function createSmartHomeActionsSever(port = 8888) {
   const inputHandler = async (only) => {
     switch (only.intent) {
       case 'action.devices.SYNC': {
-        const all = allDevices();
-
         return {
           agentUserId: 'sam',
-          devices: all.map(convertToSmartHome),
+          devices: allSmartHomeDevices(),
         };
       }
 
       case 'action.devices.QUERY':
         const {devices} = only.payload;
-        const states = await Promise.all(devices.map(async (id) => {
-          // TODO: async fetch state
-          console.warn('got query for id', id);
-
-          return {
-            online: false,
-          };
+        const states = await Promise.all(devices.map(async (key) => {
+          const device = getByMac(key.id);
+          if (!device) {
+            return {
+              status: 'ERROR',
+              errorCode: 'unableToLocateDevice',
+            };
+          }
+          return await device.state();
         }));
 
         /** @type {{[name: string]: any}} */
@@ -82,15 +102,20 @@ export async function createSmartHomeActionsSever(port = 8888) {
 
         const result = await Promise.all(Object.keys(byDevice).map(async (id) => {
           const exec = byDevice[id];
-          console.warn('got exec', exec, 'for id', id);
-          // TODO: async perform op
 
+          const device = getByMac(id);
+          if (!device) {
+            return {
+              status: 'ERROR',
+              errorCode: 'unableToLocateDevice',
+            };
+          }
+
+          const result = await device.exec(exec);
           return {
             ids: [id],
-            status: 'ERROR',
-            errorCode: 'deviceTurnedOff',
-            // TODO: rest of status
-            online: false,
+            status: 'SUCCESS',
+            ...result,
           };
         }));
 
@@ -164,6 +189,15 @@ export async function createSmartHomeActionsSever(port = 8888) {
     });
   });
 
-  await listenPromise(httpServer, port);
+  const wss = new ws.Server({noServer: true});
 
+  httpServer.on('upgrade', (request, socket, head) => {
+    if (request.url === '/') {
+      wss.handleUpgrade(request, socket, head, handleSocket);
+    } else {
+      socket.destroy();
+    }
+  });
+
+  await listenPromise(httpServer, port);
 }

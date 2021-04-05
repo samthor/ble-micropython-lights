@@ -24,11 +24,6 @@ server_addr = '192.168.86.39'
 server_port = 9999
 
 
-only_connect_to = [
-  'MICRO_DIMMER_AA79',
-]
-
-
 control_service_uuid = bluetooth.UUID('720a9080-9c7d-11e5-a7e3-0002a5d5c51b')
 state_uuid = bluetooth.UUID('720a9081-9c7d-11e5-a7e3-0002a5d5c51b')
 level_uuid = bluetooth.UUID('720a9082-9c7d-11e5-a7e3-0002a5d5c51b')
@@ -38,20 +33,11 @@ request_char_uuid = bluetooth.UUID('720a7081-9c7d-11e5-a7e3-0002a5d5c51b')
 response_char_uuid = bluetooth.UUID('720a7082-9c7d-11e5-a7e3-0002a5d5c51b')
 
 
-_NOOP_MS = const(10)
 _DELAY_MS = const(100)
 _BACKOFF_MS = const(1000)
 _BACKOFF_MAX = const(8)
 _COMMAND_EXPIRY_MS = const(5000)
-_CLEANUP_TASK_EVERY_MS = const(1000 * 60)
-_STATE_EXPIRY_MS = const(1000 * 60 * 60)  # 1hr
-
 _PAIR_TIMEOUT_MS = const(30 * 1000)
-
-_BRIGHT_MAX = const(10000)
-_BRIGHT_BITS = const(10)
-
-_MCAST_PORT = const(9999)
 
 
 ble_lock = asyncio.Lock()
@@ -63,8 +49,6 @@ class SeenState(object):
   def __init__(self, is_on, brightness):
     self.is_on = is_on
     self.brightness = brightness
-    self.at = time.ticks_ms()
-    self.gen = time.ticks_ms()
 
 
 
@@ -144,31 +128,15 @@ async def scan():
 
       generation = data[5]                # settings revision count (some change)
       is_on = bool(data[6] & 15)          # Clipsal app checks low bits
-      b_ratio = data[7] / 255.0
-      brightness = int(round(b_ratio * _BRIGHT_MAX))
+      brightness = int(round(data[7] / 255.0 * 100.0))
 
       if is_on and not brightness:
         brightness = 1
-
-      prev = seen_states.get(addr, None)
-      if prev and prev.is_on == is_on and prev.brightness == brightness:
-        prev.at = time.ticks_ms()
-        continue
 
       state = SeenState(is_on, brightness)
       seen_states[addr] = state
       pending_update_event.set()
       print('(scan) device', name, 'on=', is_on, 'brightness=', brightness)
-
-      # Zero command on first seen
-      if (not prev) and (addr not in pending_command):
-        if len(only_connect_to):
-          for check in only_connect_to:
-            if name.startswith(check):
-              break
-          else:
-            continue
-        insert_command(addr, PendingCommand())
 
 
 async def scan_forever():
@@ -214,26 +182,26 @@ async def enact_internal(connection, command):
 
   if command.set_brightness is not None:
     level_char = await service.characteristic(level_uuid)
-    update = command.set_brightness.to_bytes(2, 'little')  # because why the fuck not
+    brightness = command.set_brightness * 100  # 100 => 10_000
+    update = brightness.to_bytes(2, 'little')  # because why the fuck not
     print('toggling state', update)
     await level_char.write(update, True)
 
+  # # get some info while we're here
+  # rr_service = await connection.service(command_service_uuid)
+  # request_char = await rr_service.characteristic(request_char_uuid)
+  # response_char = await rr_service.characteristic(response_char_uuid)
 
-  # get some info while we're here
-  rr_service = await connection.service(command_service_uuid)
-  request_char = await rr_service.characteristic(request_char_uuid)
-  response_char = await rr_service.characteristic(response_char_uuid)
+  # await response_char.subscribe()
 
-  await response_char.subscribe()
+  # # We need this hack before any notifications arrive.
+  # response_char._notify_data = True
+  # await response_char.notified()
 
-  # We need this hack before any notifications arrive.
-  response_char._notify_data = True
-  await response_char.notified()
-
-  print('writing name command...', list(build_read_command(0x1002, 12)))
-  await request_char.write(build_read_command(0x1002, 12), True)
-  data = await response_char.notified(10 * 1000)
-  print('got name response', data, data[8:].decode('utf-8'))
+  # print('writing name command...', list(build_read_command(0x1002, 12)))
+  # await request_char.write(build_read_command(0x1002, 12), True)
+  # data = await response_char.notified(10 * 1000)
+  # print('got name response', data, data[8:].decode('utf-8'))
 
 
 async def enact():
@@ -294,11 +262,12 @@ async def read_command(mac, rest):
   elif rest[1] == 0:
     pc.set_on = False
 
-  brightness = int.from_bytes(rest[2:4], 'big')
-  if brightness <= _BRIGHT_MAX:
+  brightness = int(rest[2])
+  if brightness <= 100:
     pc.set_brightness = brightness
 
   insert_command(mac, pc)
+
 
 async def network_coordinator():
   failures = 0
@@ -341,27 +310,26 @@ async def network_coordinator():
 
 
 async def network_update(writer):
-  sent = {}
-
   try:
     while True:
-      for addr in seen_states:
-        state = seen_states[addr]
-        sent_gen = sent.get(addr, 0)
-        if sent_gen == state.gen:
-          continue
-
-        # x55 magic for light
-        payload = addr + b'\x55' + bytes([state.is_on]) + state.brightness.to_bytes(2, 'big') + bytes([0, 0, 0, 0, 0, 0])
-        if len(payload) != 16:
-          raise Exception('could not get 16 bytes to send')
-        writer.write(payload)
-        await writer.drain()
-
-        sent[addr] = state.gen
-
       await pending_update_event.wait()
-      pending_update_event.clear()
+      if len(seen_states) <= 1:
+        pending_update_event.clear()
+        if len(seen_states) == 0:
+          await asyncio.sleep_ms(_DELAY_MS);
+          continue # not sure why this happened
+
+      # Find a random next state to send.
+      addr = random.choice(list(seen_states.keys()))
+      state = seen_states[addr]
+      del(seen_states[addr])
+
+      # x55 magic for light
+      payload = addr + bytes([0x55, state.is_on, state.brightness, 0, 0, 0, 0, 0, 0, 0])
+      if len(payload) != 16:
+        raise Exception('could not get 16 bytes to send')
+      writer.write(payload)
+      await writer.drain()
 
   except Exception as e:
     print(log_exception(e, server_addr))
@@ -375,12 +343,7 @@ async def main():
   asyncio.create_task(network_coordinator())
 
   while True:
-    await asyncio.sleep_ms(_CLEANUP_TASK_EVERY_MS)
-    threshold = time.ticks_ms() - _STATE_EXPIRY_MS
-    for addr in seen_states:
-      state = seen_states[addr]
-      if state.at < threshold:
-        del(seen_states[addr])
+    await asyncio.sleep_ms(_DELAY_MS)
 
 
 asyncio.run(main())

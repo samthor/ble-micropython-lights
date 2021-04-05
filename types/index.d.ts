@@ -56,6 +56,9 @@ export interface Device extends DeviceKey {
 
 export interface DeviceState {
   online: boolean;
+
+  on?: boolean;
+  brightness?: number;
 }
 
 export interface AssistantCommandResult {
