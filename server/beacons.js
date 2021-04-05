@@ -31,6 +31,12 @@ export async function createBeaconServer(port = 9999) {
       pending = data;
     });
 
+    // We need this otherwise Node will throw and crash.
+    socket.on('error', (err) => {
+      console.warn('websocket err', err);
+      socket.destroy();
+    });
+
     socket.on('close', (hadError) => {
       console.warn('socket close', hadError);
       active.delete(socket);

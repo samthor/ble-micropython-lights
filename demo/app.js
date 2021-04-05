@@ -33,7 +33,7 @@ namesRaw.split(/\n/g).forEach((cand) => {
   }
   names[parts[1].toLowerCase()] = parts[0];
 });
-console.warn(names);
+console.warn(JSON.stringify(names, undefined, 2));
 
 
 function reconnectToSocket() {

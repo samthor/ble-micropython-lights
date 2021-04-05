@@ -14,7 +14,7 @@ const shactions = await createSmartHomeActionsSever();
 const clients = new Set();
 
 
-/** @type {Map<string, model.Light>} */
+/** @type {Map<string, model.Device>} */
 const allLights = new Map();
 
 

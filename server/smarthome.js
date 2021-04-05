@@ -1,6 +1,7 @@
 import * as http from 'http';
 import { listenPromise } from './lib/server.js';
 import * as types from '../types/index.js';
+import { allDevices, convertToSmartHome } from './devices.js';
 
 
 /**
@@ -30,16 +31,107 @@ async function parsePostJson(req) {
 }
 
 
+/**
+ * @param {string} errorCode
+ */
+function buildError(errorCode) {
+  return {errorCode};
+}
+
+
 export async function createSmartHomeActionsSever(port = 8888) {
 
   /**
-   * @param {types.AssistantRequest} payload
+   * @param {types.AssistantInput} only
    */
-  const requestHandler = (payload) => {
+  const inputHandler = async (only) => {
+    switch (only.intent) {
+      case 'action.devices.SYNC': {
+        const all = allDevices();
 
+        return {
+          agentUserId: 'sam',
+          devices: all.map(convertToSmartHome),
+        };
+      }
 
+      case 'action.devices.QUERY':
+        const {devices} = only.payload;
+        const states = Promise.all(devices.map(async (id) => {
+          // TODO: async fetch state
+          console.warn('got query for id', id);
 
+          return {
+            online: false,
+          };
+        }));
 
+        /** @type {{[name: string]: any}} */
+        const result = {};
+        devices.forEach(({id}, i) => result[id] = states[i]);
+
+        return {devices: result};
+
+      case 'action.devices.EXECUTE': {
+        const {commands} = only.payload;
+
+        // Flatten requests to be per-device so we can send them in bulk. Google's API is very
+        // broad, and this probably never happens in practice.
+        /** @type {{[id: string]: types.AssistantExec[]}} */
+        const byDevice = {};
+        commands.map((command) => {
+          for (const {id} of command.devices) {
+            if (!(id in byDevice)) {
+              byDevice[id] = [];
+            }
+            byDevice[id].push(...command.execution);
+          }
+        });
+
+        const result = await Promise.all(Object.keys(byDevice).map(async (id) => {
+          const exec = byDevice[id];
+          console.warn('got exec', exec, 'for id', id);
+          // TODO: async perform op
+
+          return {
+            ids: [id],
+            status: 'ERROR',
+            errorCode: 'deviceTurnedOff',
+            // TODO: rest of status
+            online: false,
+          };
+        }));
+
+        return {
+          commands: result,
+        }
+      };
+
+      case 'action.devices.DISCONNECT':
+        // This happens when a user removes themselves from actions. For a demo app
+        // this doesn't matter.
+        return {};
+
+      default:
+        return buildError('notSupported');
+    }
+  };
+
+  /**
+   * @param {types.AssistantRequest} payload
+   * @return {Promise<types.AssistantResponse>}
+   */
+  const requestHandler = async (payload) => {
+    if (payload.inputs.length !== 1) {
+      throw new Error(`expected single input, had: ${payload.inputs.length}`);
+    }
+    const only = payload.inputs[0];
+    const out = await inputHandler(only);
+
+    return {
+      requestId: payload.requestId,
+      payload: out,
+    };
   };
 
   const httpServer = http.createServer((req, res) => {
@@ -52,6 +144,8 @@ export async function createSmartHomeActionsSever(port = 8888) {
       res.writeHead(405);
       return res.end();
     }
+
+    // TODO(samthor): Check for oauth lol.
 
     parsePostJson(req).then(requestHandler).catch((err) => {
       console.warn('got bad shactions request', err);

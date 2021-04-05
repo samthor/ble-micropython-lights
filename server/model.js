@@ -1,39 +1,49 @@
 
 import {performance} from 'perf_hooks';
+import * as types from '../types/index.js';
+import { getByMac } from './devices.js';
 
 
 const LIGHT_BEACON_TYPE = 0x55;
 const BRIGHT_MAX = 10_000;
 
 
-export class Light {
-  mac = '';
+export class Device {
+  mac;
+  #device;
+
+  /**
+   * @param {string} mac
+   */
+  constructor(mac) {
+    this.mac = mac;
+    this.#device = getByMac(mac);
+  }
+
+  /**
+   * @return {types.GenericDevice}
+   */
+  toJSON() {
+    return Object.assign({}, this.#device);
+  }
+}
+
+
+export class Light extends Device {
   isOn = false;
   brightness = 0.0;
 
   when = performance.now();
 
   /**
-   * // TODO: do json-encoding
-   *
-   * @return {Buffer}
+   * @return {types.GenericDevice}
    */
-  encode() {
-    const b = new Uint8ClampedArray(16);
-    const dv = new DataView(b.buffer);
-
-    for (let i = 0; i < 6; ++i) {
-      b[i] = this.mac.charCodeAt(i);
-    }
-    b[6] = 0x55;
-    b[7] = this.isOn ? 1 : 0;
-
-    const brightness = Math.min(BRIGHT_MAX, this.brightness * BRIGHT_MAX);
-    dv.setUint16(8, brightness);
-
-    return Buffer.from(b);
+  toJSON() {
+    return Object.assign(super.toJSON(), {
+      isOn: this.isOn,
+      brightness: this.brightness,
+    });
   }
-
 }
 
 
@@ -45,12 +55,16 @@ export function decodeBuffer(buffer) {
     return null;
   }
 
-  const mac = String.fromCharCode(...buffer.slice(0, 6));
+  const macParts = [];
+  for (let i = 0; i < 6; ++i) {
+    macParts.push(buffer[i].toString(16).padStart(2, '0'));
+  }
+  const mac = macParts.join(':')
 
   const type = buffer[6];
   switch (type) {
     case LIGHT_BEACON_TYPE: {
-      const l = new Light();
+      const l = new Light(mac);
 
       // 0-6: mac
       // 6: magic for type
@@ -58,7 +72,6 @@ export function decodeBuffer(buffer) {
       // 8: brightness [0,BRIGHT_MAX]
       // 9-15: ???
 
-      l.mac = mac;
       l.isOn = Boolean(buffer[7]);
       l.brightness = buffer.readUInt16BE(8) / BRIGHT_MAX;
       return l;

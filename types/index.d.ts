@@ -4,6 +4,11 @@ export interface AssistantRequest {
   inputs: AssistantInput[],
 }
 
+export interface AssistantResponse {
+  requestId: string,
+  payload: any,
+}
+
 export interface AssistantInput {
   intent: string,
   payload: {
@@ -36,10 +41,10 @@ export interface DeviceInfo {
 
 export interface Device extends DeviceKey {
   type: string,
-  traits: string[],  // possible ways of being conrtolled
+  traits: string[],  // possible ways of being controlled
   willReportState: boolean,  // true is real-time, false is polling
   roomHint?: string,
-  attriutes?: {[name: string]: any},
+  attributes?: {[name: string]: any},
   deviceInfo?: DeviceInfo,
 
   name: {
@@ -55,3 +60,14 @@ export interface AssistantCommandResult {
   errorCode: string,
   states: {[name: string]: any},
 }
+
+export interface GenericDevice {
+  type: string,
+  name: string,
+  mac?: string,
+
+  isOn?: boolean,
+  brightness?: number,
+}
+
+export type DevicesStore = {[mac: string]: GenericDevice};

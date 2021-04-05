@@ -1,0 +1,81 @@
+{
+  // Lights
+  '00:0d:6f:c6:aa:f5': {
+    type: 'clipsal-light',
+    name: 'Ensuite',
+  },
+  '00:0d:6f:b3:df:9a': {
+    type: 'clipsal-light',
+    name: 'Bedroom Rear',
+  },
+  '00:0d:6f:c6:aa:f9': {
+    type: 'clipsal-light',
+    name: 'Bedroom Front',
+  },
+  '00:0d:6f:c6:aa:88': {
+    type: 'clipsal-light',
+    name: 'Loft',
+  },
+  '00:0d:6f:ba:70:7e': {
+    type: 'clipsal-light',
+    name: 'Stairs',
+  },
+  '00:0d:6f:cd:90:e0': {
+    type: 'clipsal-light',
+    name: 'Bathroom',
+  },
+  '00:0d:6f:c6:aa:79': {
+    type: 'clipsal-light',
+    name: 'Hall',
+  },
+  '00:0d:6f:b3:df:37': {
+    type: 'clipsal-light',
+    name: 'Kitchen Rear',
+  },
+  '00:0d:6f:cd:9b:a6': {
+    type: 'clipsal-light',
+    name: 'Kitchen Mid',
+  },
+  '00:0d:6f:cd:94:e1': {
+    type: 'clipsal-light',
+    name: 'Kitchen Front',
+  },
+  '00:0d:6f:cf:b6:d3': {
+    type: 'clipsal-light',
+    name: 'Living TV side',
+  },
+  '00:0d:6f:ba:6e:3d': {
+    type: 'clipsal-light',
+    name: 'Living couch',
+  },
+  '00:0d:6f:c6:aa:3b': {
+    type: 'clipsal-light',
+    name: 'Entryway',
+  },
+  '00:0d:6f:cb:f1:99': {
+    type: 'clipsal-light',
+    name: 'Front',
+  },
+  // AC units
+  'fc:c2:de:44:96:17': {
+    type: 'daikin-ac-wifi',
+    name: 'Bedroom',
+  },
+  'fc:c2:de:44:6f:b3': {
+    type: 'daikin-ac-wifi',
+    name: 'Loft',
+  },
+  'a0:cc:2b:ed:11:f2': {
+    type: 'daikin-ac-wifi',
+    name: 'Den',
+  },
+  'a0:cc:2b:ed:1c:0d': {
+    type: 'daikin-ac-wifi',
+    name: 'Living',
+  },
+  // Garage (old)
+  '58:63:56:cc:57:7a': {
+    type: 'garage',
+    name: 'Garage',
+  },
+}
