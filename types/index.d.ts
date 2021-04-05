@@ -19,7 +19,7 @@ export interface AssistantInput {
 
 export interface AssistantCommand {
   devices: DeviceKey[],
-  execution: AssistantExec[],
+  execution?: AssistantExec[],
 }
 
 export interface DeviceKey {
@@ -54,11 +54,24 @@ export interface Device extends DeviceKey {
   },
 }
 
+export interface DeviceState {
+  online: boolean;
+}
+
 export interface AssistantCommandResult {
   ids: string[],
   status: string,
   errorCode: string,
   states: {[name: string]: any},
+}
+
+export interface SyncResponse {
+  agentUserId: string,
+  devices: Device[],
+}
+
+export interface QueryResponse {
+  devices: {[id: string]: DeviceState},
 }
 
 export interface GenericDevice {

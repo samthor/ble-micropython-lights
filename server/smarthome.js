@@ -31,14 +31,6 @@ async function parsePostJson(req) {
 }
 
 
-/**
- * @param {string} errorCode
- */
-function buildError(errorCode) {
-  return {errorCode};
-}
-
-
 export async function createSmartHomeActionsSever(port = 8888) {
 
   /**
@@ -57,7 +49,7 @@ export async function createSmartHomeActionsSever(port = 8888) {
 
       case 'action.devices.QUERY':
         const {devices} = only.payload;
-        const states = Promise.all(devices.map(async (id) => {
+        const states = await Promise.all(devices.map(async (id) => {
           // TODO: async fetch state
           console.warn('got query for id', id);
 
@@ -84,7 +76,7 @@ export async function createSmartHomeActionsSever(port = 8888) {
             if (!(id in byDevice)) {
               byDevice[id] = [];
             }
-            byDevice[id].push(...command.execution);
+            byDevice[id].push(...command.execution ?? []);
           }
         });
 
@@ -113,7 +105,10 @@ export async function createSmartHomeActionsSever(port = 8888) {
         return {};
 
       default:
-        return buildError('notSupported');
+        return {
+          status: 'ERROR',
+          errorCode: 'notSupported',
+        };
     }
   };
 
@@ -145,21 +140,27 @@ export async function createSmartHomeActionsSever(port = 8888) {
       return res.end();
     }
 
+    res.setHeader('Access-Control-Allow-Origin', '*');
+
     // TODO(samthor): Check for oauth lol.
 
-    parsePostJson(req).then(requestHandler).catch((err) => {
-      console.warn('got bad shactions request', err);
-      res.writeHead(500);
-    }).finally((response) => {
-      // Write any outstanding data.
-      return /** @type {Promise<void>} */ (new Promise((r) => {
-        if (response) {
+    Promise.resolve().then(async () => {
+
+      try {
+        const request = await parsePostJson(req);
+        const response = await requestHandler(request);
+
+        await /** @type {Promise<void>} */ (new Promise((r) => {
           res.write(JSON.stringify(response), () => r());
-        } else {
-          r();
-        }
+        }));
+
+      } catch (err) {
+        console.warn('internal shactions request error', err);
+        res.writeHead(500);
+      } finally {
         res.end();
-      }));
+      }
+
     });
   });
 
