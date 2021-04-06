@@ -1,5 +1,4 @@
 import * as net from 'net';
-import * as events from 'events';
 import { listenPromise } from './lib/server.js';
 import { updateViaBeacon } from './devices.js';
 

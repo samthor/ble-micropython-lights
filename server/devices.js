@@ -8,6 +8,7 @@ import JSON5 from 'json5';
 import { ClipsalPower } from './types/clipsal.js';
 import { broadcastAllBeacons } from './beacons.js';
 import { DaikinAC } from './types/daikin.js';
+import { sleep } from '../lib/promise.js';
 
 
 const devicesPath = new URL('../devices.json5', import.meta.url);
@@ -44,7 +45,7 @@ for (const mac in devicesStore) {
 
   switch (data.type) {
     case 'clipsal':
-      model = new ClipsalPower(broadcast);
+      model = new ClipsalPower(mac, broadcast);
       break;
 
     case 'daikin-ac-wifi':
@@ -80,6 +81,39 @@ export function unsubscribeFromChanges(sub) {
 
 
 /**
+ * @param {string} id
+ * @param {(state: types.DeviceState) => boolean} callback return true to stop
+ * @param {number} timeout
+ * @return {Promise<types.DeviceState?>} if callback stopped us
+ */
+export async function waitForChangesTo(id, callback, timeout) {
+
+  /** @type {(id: string, state: types.DeviceState, change: boolean) => void} */
+  let sub;
+
+  /** @type {Promise<types.DeviceState>} */
+  const updatePromise = new Promise((resolve) => {
+    sub = (updateId, state, change) => {
+      if (updateId !== id || !change) {
+        return;
+      }
+      if (callback(state)) {
+        resolve(state);
+      }
+    };
+    subscribeToChanges(sub);
+  });
+
+  const timeoutPromise = sleep(timeout);
+  const result = await Promise.race([updatePromise, timeoutPromise]);
+  // @ts-ignore
+  unsubscribeFromChanges(sub);
+
+  return result ?? null;
+}
+
+
+/**
  * @param {Buffer} buffer
  */
 export function updateViaBeacon(buffer) {
@@ -100,19 +134,15 @@ export function updateViaBeacon(buffer) {
     return;
   }
 
-  const change = device.updateViaBeacon(buffer.slice(6));
-  Promise.resolve().then(async () => {
+  const changeState = device.updateViaBeacon(buffer.slice(6));
+  if (changeState) {
+    console.warn('change', mac, changeState);
     try {
-      const state = await device.state();
-      changeSubscribers.forEach((sub) => sub(mac, state, change));
-
-      if (change) {
-        console.warn('change', mac, state);
-      }
+      changeSubscribers.forEach((sub) => sub(mac, changeState, true));
     } catch (e) {
       console.warn('got err rebroadcasting state', e);
     }
-  });
+  }
 }
 
 

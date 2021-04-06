@@ -2,28 +2,34 @@
 import {Device} from '../model.js';
 import {performance} from 'perf_hooks';
 import * as types from '../../types/index.js';
+import { subscribeToChanges, waitForChangesTo } from '../devices.js';
 
 
 const LIGHT_BEACON_TYPE = 0x55;
 const ONLINE_MS = 60_000;
+const EXEC_CHANGE_MS = 10_000;
 
 
 export class ClipsalPower extends Device {
+  #mac;
   #isOn = false;
   #brightness = 0;
   #when = -ONLINE_MS;
   #writeToBeacon;
 
   /**
+   * @param {string} mac
    * @param {(buffer: Buffer) => number} writeToBeacon
    */
-  constructor(writeToBeacon) {
+  constructor(mac, writeToBeacon) {
     super();
+    this.#mac = mac;
     this.#writeToBeacon = writeToBeacon;
   }
 
   /**
    * @param {Buffer} buffer 12-byte payload (mac already stripped)
+   * @return {types.DeviceState?}
    */
   updateViaBeacon(buffer) {
     const type = buffer[0];
@@ -37,15 +43,21 @@ export class ClipsalPower extends Device {
     const brightness = buffer[2];
 
     if (this.#isOn === isOn && this.#brightness === brightness) {
-      return first;
+      if (first) {
+        return this.#internalState();
+      }
+      return null;
     }
 
     this.#isOn = isOn;
     this.#brightness = brightness;
-    return true;
+    return this.#internalState();
   }
 
-  async state() {
+  /**
+   * @return {types.DeviceState}
+   */
+  #internalState = () => {
     const online = (performance.now() - this.#when) <= ONLINE_MS;
     if (!online) {
       return {online: false};
@@ -56,6 +68,13 @@ export class ClipsalPower extends Device {
       on: this.#isOn,
       brightness: this.#brightness,
     };
+  };
+
+  /**
+   * @return {Promise<types.DeviceState>}
+   */
+  async state() {
+    return this.#internalState();
   }
 
   /**
@@ -98,7 +117,11 @@ export class ClipsalPower extends Device {
       };
     }
 
-    // TODO: could wait for 'next' update?
-    return this.state();
+    const update = await waitForChangesTo(this.#mac, (change) => {
+      // TODO: this is probably us
+      return true;
+    }, EXEC_CHANGE_MS);
+
+    return update ?? this.#internalState();
   }
 }

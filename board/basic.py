@@ -20,7 +20,8 @@ import struct
 security.load_secrets()
 
 
-server_addr = '192.168.86.39'
+server_hostname = 'beacon-reporting.whistlr.info'
+server_addr_fallback = '192.168.86.4'
 server_port = 9999
 
 
@@ -275,10 +276,15 @@ async def network_coordinator():
 
   while True:
     try:
-      reader, writer = await asyncio.open_connection(server_addr, server_port)
+      try:
+        print('connecting to', server_hostname)
+        reader, writer = await asyncio.open_connection(server_hostname, server_port)
+      except:
+        print('failed, fallback to', server_addr_fallback)
+        reader, writer = await asyncio.open_connection(server_addr_fallback, server_port)
       failures = 0
 
-      print('connected to', server_addr + ':' + str(server_port))
+      print('connected!')
       asyncio.create_task(network_update(writer))
 
       pending = b''
@@ -302,6 +308,12 @@ async def network_coordinator():
       failures += 1
       if failures > _BACKOFF_MAX:
         failures = _BACKOFF_MAX
+
+      try:
+        writer.close()
+        await stream.wait_closed()
+      except:
+        pass  # ignore
 
 
     delay = _BACKOFF_MS * failures
@@ -334,6 +346,12 @@ async def network_update(writer):
 
   except Exception as e:
     print(log_exception(e, server_addr))
+    try:
+      writer.close()
+      await stream.wait_closed()
+    except:
+      pass  # ignore
+
 
 
 async def main():

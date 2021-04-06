@@ -6,7 +6,7 @@ export class Device {
 
   /**
    * @param {Buffer} buffer 10-byte payload (mac already stripped)
-   * @return {boolean} on change
+   * @return {types.DeviceState?} non-null if changed
    */
   updateViaBeacon(buffer) {
     throw new Error(`unimplemented`);
