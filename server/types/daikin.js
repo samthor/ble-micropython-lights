@@ -5,6 +5,7 @@ import * as types from '../../types/index.js';
 import * as dgram from 'dgram';
 import { sleep } from '../../lib/promise.js';
 import fetch from 'node-fetch';
+import { runTask } from '../lib/task.js';
 
 
 /** @type {{[mac: string]: string}} */
@@ -51,7 +52,10 @@ function parseValues(raw) {
 const clampToHalfDegree = (value) => Math.round(value * 2) / 2;
 
 
-async function broadcastTask() {
+/**
+ * @param {() => void} success
+ */
+async function broadcastTask(success) {
   const sock = dgram.createSocket({type: 'udp4', reuseAddr: true});
 
   const localPort = await new Promise((resolve, reject) => {
@@ -92,6 +96,7 @@ async function broadcastTask() {
         }
       });
     });
+    success();
 
     if (bytes !== broadcastPayload.length) {
       throw new Error(`broadcast payload could not be sent`);
@@ -100,8 +105,8 @@ async function broadcastTask() {
   }
 }
 
-// TODO: restart
-broadcastTask();
+
+runTask('daikin-broadcast', broadcastTask);
 
 
 async function getValues(mac, type) {

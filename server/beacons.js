@@ -31,7 +31,7 @@ export async function createBeaconServer(port = 9999) {
   const server = net.createServer((socket) => {
     active.add(socket);
     let pending = Buffer.from([]);
-    console.warn('got new socket', socket.address());
+    console.warn('got new socket', socket.address(), 'from', socket.remoteAddress);
 
     socket.on('data', (data) => {
       while (data.length + pending.length >= PACKET_SIZE) {
@@ -53,9 +53,6 @@ export async function createBeaconServer(port = 9999) {
     });
 
     socket.on('close', (hadError) => {
-      if (hadError) {
-        console.warn('socket close with error');
-      }
       console.warn('socket closed', socket.address());
       active.delete(socket);
     });

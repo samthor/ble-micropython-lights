@@ -4,6 +4,7 @@ import { subscribeToChanges } from './devices.js';
 import * as types from '../types/index.js';
 import { sleep } from '../lib/promise.js';
 import { WorkQueueObject } from './lib/queue.js';
+import { runTask } from './lib/task.js';
 
 
 const HOMEGRAPH_AGGREGATE_MS = 250;
@@ -35,7 +36,7 @@ const changedDevicesQueue = new WorkQueueObject();
 
 
 
-async function updateGoogleTask() {
+async function updateGoogleTask(success) {
   const requestSuffix = (Math.random() * 255).toString(16).substr(2);
   let requestId = 0;
 
@@ -55,8 +56,10 @@ async function updateGoogleTask() {
 
     const req = await client.request({url: homegraphNotificationUrl, method: 'POST', body: JSON.stringify(request)});
     if (req.status !== 200) {
+      // TODO: this throws away pending changes
       throw new Error(`failed to update: ${req.status}`);
     }
+    success();
   }
 }
 
@@ -68,7 +71,6 @@ if (client) {
     }
   });
 
-  // TODO: task restart
-  updateGoogleTask();
+  runTask('homegraph', updateGoogleTask);
 }
 
