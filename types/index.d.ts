@@ -65,7 +65,7 @@ export interface Device extends DeviceKey {
 }
 
 export interface DeviceState {
-  errorCode?: string;
+  errorCode?: string;  // not really here, but useful for reporting failures
 
   online: boolean;
 
@@ -93,6 +93,16 @@ export interface SyncResponse {
 
 export interface QueryResponse {
   devices: {[id: string]: DeviceState},
+}
+
+export interface HomegraphNotificationRequest {
+  requestId: string,
+  agentUserId: string,
+  payload: {
+    devices: {
+      states: {[id: string]: DeviceState},
+    },
+  },
 }
 
 /**

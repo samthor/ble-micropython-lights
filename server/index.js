@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import './homegraph.js';
 import { createBeaconServer } from './beacons.js';
 import { createSmartHomeActionsSever } from './smarthome.js';
 

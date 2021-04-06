@@ -103,7 +103,8 @@ def build_write_command(register, value, length = 8):
 async def scan():
   await ble_lock.acquire()
 
-  async with aioble.scan(0, interval_us=30000, window_us=30000, active=True) as scanner:
+  # scan for ~60s at a time to force restart
+  async with aioble.scan(60 * 1000, interval_us=30000, window_us=30000, active=True) as scanner:
     ble_lock.release()
     print('scanning...')
 
