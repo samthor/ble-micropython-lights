@@ -38,7 +38,9 @@ _DELAY_MS = const(100)
 _BACKOFF_MS = const(1000)
 _BACKOFF_MAX = const(8)
 _COMMAND_EXPIRY_MS = const(5000)
+_WIFI_RESTART_MS = const(60 * 1000)
 _PAIR_TIMEOUT_MS = const(30 * 1000)
+_RESTART_MS = const(60 * 60 * 1000)  # reset every hour because why not
 
 
 ble_lock = asyncio.Lock()
@@ -353,6 +355,14 @@ async def network_update(writer):
       pass  # ignore
 
 
+async def wifi_restart():
+  # deal with wifi drops
+  while True:
+    await asyncio.sleep_ms(_WIFI_RESTART_MS)
+    sta_if = network.WLAN(network.STA_IF)
+    if not sta_if.isconnected():
+      pyb.hard_reset()
+
 
 async def main():
   await pending_lock.acquire()
@@ -360,10 +370,13 @@ async def main():
   asyncio.create_task(enact())
   asyncio.create_task(scan_forever())
   asyncio.create_task(network_coordinator())
+  asyncio.create_task(wifi_restart())
 
-  while True:
+  # industry best practice
+  await asyncio.sleep_ms(_RESTART_MS)
+  while len(pending_command):
     await asyncio.sleep_ms(_DELAY_MS)
-
+  pyb.hard_reset()
 
 asyncio.run(main())
 
