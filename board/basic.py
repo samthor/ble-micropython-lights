@@ -21,7 +21,7 @@ security.load_secrets()
 
 
 server_hostname = 'beacon-reporting.whistlr.info'
-server_addr_fallback = '192.168.86.4'
+server_addr_fallback = '192.168.1.4'
 server_port = 9999
 
 
