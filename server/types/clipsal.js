@@ -7,7 +7,7 @@ import { subscribeToChanges, waitForChangesTo } from '../devices.js';
 
 const LIGHT_BEACON_TYPE = 0x55;
 const ONLINE_MS = 60_000;
-const EXEC_CHANGE_MS = 10_000;
+const EXEC_CHANGE_MS = 5_000;
 
 
 export class ClipsalPower extends Device {
@@ -118,10 +118,13 @@ export class ClipsalPower extends Device {
     }
 
     const update = await waitForChangesTo(this.#mac, (change) => {
-      // TODO: this is probably us
+      // This is probably our change.
       return true;
     }, EXEC_CHANGE_MS);
 
+    // Just return the previous seen state if nothing happens. Google has a pretty strict timeout
+    // which means that updating many lights tends to make it unhappy, so we can't wait longer than
+    // 5 seconds.
     return update ?? this.#internalState();
   }
 }

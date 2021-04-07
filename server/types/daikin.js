@@ -243,6 +243,7 @@ export class DaikinAC extends Device {
           const mode = /** @type {string} */ (e.params.thermostatMode);
 
           if (mode === 'off') {
+            // This should never happen.
             values['pow'] = '0';
           } else {
             values['pow'] = '1';
