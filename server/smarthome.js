@@ -154,9 +154,9 @@ export async function createSmartHomeActionsSever(port = 8888) {
       throw new Error(`expected single input, had: ${payload.inputs.length}`);
     }
     const only = payload.inputs[0];
-    console.warn('got sh-request', JSON.stringify(only));
+    console.warn('got sh-request ==>', JSON.stringify(only, undefined, 2));
     const out = await inputHandler(only);
-    console.warn('got sh-response', out);
+    console.warn('got sh-response <=', JSON.stringify(out, undefined, 2));
 
     return {
       requestId: payload.requestId,

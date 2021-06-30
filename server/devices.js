@@ -208,7 +208,7 @@ function convertToSmartHome(raw) {
         'action.devices.traits.TemperatureSetting',
         'action.devices.traits.FanSpeed',
       );
-      attributes['availableThermostatModes'] = ['on', 'heat', 'cool', 'heatcool', 'fan-only', 'dry'];
+      attributes['availableThermostatModes'] = ['heat', 'cool', 'heatcool', 'fan-only', 'dry'];
       attributes['thermostatTemperatureUnit'] = 'C';
       attributes['thermostatTemperatureRange'] = {
         minThresholdCelsius: 18,  // actually 10

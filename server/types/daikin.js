@@ -245,14 +245,13 @@ export class DaikinAC extends Device {
           if (mode === 'off') {
             // This should never happen.
             values['pow'] = '0';
-          } else {
+          } else if (mode === 'on') {
             values['pow'] = '1';
-
-            if (mode !== 'on') {
-              // "on" sets us to the last used mode.
-              const value = assistantModeToValue[mode] ?? 0;
-              values['mode'] = value.toString();
-            }
+          } else if (mode !== 'on') {
+            // "on" sets us to the last used mode.
+            // // TODO: don't turn on
+            const value = assistantModeToValue[mode] ?? 0;
+            values['mode'] = value.toString();
           }
           break;
         }
