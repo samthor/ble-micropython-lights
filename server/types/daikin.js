@@ -1,4 +1,5 @@
 
+import {SmartHomeError} from '../error.js';
 import {Device} from '../model.js';
 import {performance} from 'perf_hooks';
 import * as types from '../../types/index.js';
@@ -62,7 +63,7 @@ async function broadcastTask(success) {
     sock.on('error', (err) => reject(err));
     sock.bind(() => resolve(sock.address().port));
   });
-  console.debug('got localPort', localPort);
+  console.debug('got localPort for daikin dgram broadcast', localPort);
 
   sock.setBroadcast(true);
 
@@ -77,10 +78,10 @@ async function broadcastTask(success) {
     const mac = macParts.join(':').toLowerCase();
 
     if (macToIP[mac] === rinfo.address) {
-      return;
+      return;  // already seen this one at this address
     }
 
-    console.warn('found AC device', mac, rinfo.address);
+    console.debug('found daikin AC device', mac, 'at', rinfo.address);
     macToIP[mac] = rinfo.address;
   });
 
@@ -101,7 +102,9 @@ async function broadcastTask(success) {
     if (bytes !== broadcastPayload.length) {
       throw new Error(`broadcast payload could not be sent`);
     }
-    await sleep((120 + Math.random() * 60) * 1000);
+    const when = (120 + Math.random() * 60) * 1000;
+    console.info('daikin broadcast ok, retry in', (when / 1000).toFixed(1) + 'sec');
+    await sleep(when);
   }
 }
 
@@ -112,7 +115,7 @@ runTask('daikin-broadcast', broadcastTask);
 async function getValues(mac, type) {
   const ip = macToIP[mac];
   if (!ip) {
-    throw new Error(`missing IP for ${mac}`);
+    throw new SmartHomeError('deviceNotFound', `missing IP for ${mac}`);
   }
   const response = await fetch(`http://${ip}/aircon/get_${type}_info`);
   return parseValues(await response.text());
@@ -137,11 +140,14 @@ export class DaikinAC extends Device {
     let sensorValues;
     let controlValues;
     try {
-      sensorValues = await sensorValuesPromise;
-      controlValues = await controlValuesPromise;
+      // We need Promise.all as otherwise both promises aren't eventually resolved/caught.
+      ([sensorValues, controlValues] = await Promise.all([sensorValuesPromise, controlValuesPromise]));
     } catch (e) {
+      if (e instanceof SmartHomeError) {
+        throw e;
+      }
       console.warn('failed to get state', this.#mac, e);
-      return {online: false};
+      throw new SmartHomeError('deviceNotFound', `failed to get state for: ${this.#mac}`);
     }
 
     /** @type {types.DeviceState} */
@@ -157,12 +163,15 @@ export class DaikinAC extends Device {
 
     // Find its operating mode.
     /** @type {string} */
-    let assistantMode = 'heatcool';
-    const checkMode = +controlValues['mode'];
-    for (const mode in assistantModeToValue){
-      if (assistantModeToValue[mode] === checkMode) {
-        assistantMode = mode;
-        break;
+    let assistantMode = 'off';
+    if (state.on) {
+      assistantMode = 'heatcool';
+      const checkMode = +controlValues['mode'];
+      for (const mode in assistantModeToValue){
+        if (assistantModeToValue[mode] === checkMode) {
+          assistantMode = mode;
+          break;
+        }
       }
     }
     state.thermostatMode = assistantMode;
@@ -243,15 +252,16 @@ export class DaikinAC extends Device {
           const mode = /** @type {string} */ (e.params.thermostatMode);
 
           if (mode === 'off') {
-            // This should never happen.
+            // turn off
             values['pow'] = '0';
           } else if (mode === 'on') {
+            // "on" sets us to the last used mode.
             values['pow'] = '1';
           } else if (mode !== 'on') {
-            // "on" sets us to the last used mode.
-            // // TODO: don't turn on
+            // otherwise there's a specific mode request
             const value = assistantModeToValue[mode] ?? 0;
             values['mode'] = value.toString();
+            values['pow'] = '1';
           }
           break;
         }
@@ -267,11 +277,7 @@ export class DaikinAC extends Device {
         }
 
         default:
-          console.warn('got unhandled command on AC:', e.command);
-          return {
-            online: true,
-            errorCode: 'functionNotSupported',
-          };
+          throw new SmartHomeError('functionNotSupported', `got unhandled command on AC: ${e.command}`);
       }
     }
 
@@ -284,10 +290,7 @@ export class DaikinAC extends Device {
     const responseValues = parseValues(await response.text());
     if (responseValues.ret !== 'OK') {
       console.warn('failed to do', values, 'response', responseValues);
-      return {
-        online: true,
-        errorCode: 'hardError',
-      };
+      throw new SmartHomeError('transientError', `got non-OK response: ${responseValues.ret}`);
     }
 
     return this.state();

@@ -1,3 +1,4 @@
+import {SmartHomeError} from './error.js';
 import * as http from 'http';
 import { listenPromise } from './lib/server.js';
 import * as types from '../types/index.js';
@@ -67,7 +68,8 @@ export async function createSmartHomeActionsSever(port = 8888) {
 
       case 'action.devices.QUERY':
         const {devices} = only.payload;
-        const states = await Promise.all(devices.map(async (key) => {
+        console.debug('query', devices);
+        const states = await Promise.all(devices.map((key) => {
           const device = getByMac(key.id);
           if (!device) {
             return {
@@ -75,7 +77,17 @@ export async function createSmartHomeActionsSever(port = 8888) {
               errorCode: 'unableToLocateDevice',
             };
           }
-          return await device.state();
+
+          // nb. This could be await.
+          const p = Promise.resolve(device.state());
+          return p.catch((err) => {
+            let errorCode = 'hardError';
+            if (err instanceof SmartHomeError) {
+              errorCode = err.code;
+            }
+            console.error('got err getting state', key.id, err);
+            return {status: 'ERROR', errorCode};
+          });
         }));
 
         /** @type {{[name: string]: any}} */
@@ -111,7 +123,18 @@ export async function createSmartHomeActionsSever(port = 8888) {
             };
           }
 
-          const execResult = await device.exec(exec);
+          let execResult;
+          try {
+            console.debug('exec', id, exec);
+            execResult = await device.exec(exec);
+          } catch (e) {
+            errorCode = 'hardError';
+            if (e instanceof SmartHomeError) {
+              errorCode = e.code;
+            }
+            console.error('got err doing exec', id, e)
+            execResult = {status: 'ERROR', errorCode};
+          }
           /** @type {types.AssistantCommandResult} */
           const out = {
             ids: [id],
@@ -151,12 +174,17 @@ export async function createSmartHomeActionsSever(port = 8888) {
    */
   const requestHandler = async (payload) => {
     if (payload.inputs.length !== 1) {
-      throw new Error(`expected single input, had: ${payload.inputs.length}`);
+      console.warn('expected single input, had:', payload.inputs.length);
+      return {
+        requestId: payload.requestId,
+        payload: {status: 'ERROR', errorCode: 'notSupported'},
+      };
     }
     const only = payload.inputs[0];
-    console.warn('got sh-request ==>', JSON.stringify(only, undefined, 2));
+    //console.warn('got sh-request ==>', JSON.stringify(only, undefined, 2));
+    console.info('==>', only.intent);
     const out = await inputHandler(only);
-    console.warn('got sh-response <=', JSON.stringify(out, undefined, 2));
+    //console.warn('got sh-response <=', JSON.stringify(out, undefined, 2));
 
     return {
       requestId: payload.requestId,

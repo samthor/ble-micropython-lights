@@ -8,3 +8,4 @@ await createBeaconServer();
 await createSmartHomeActionsSever();
 
 console.info('Started...');
+

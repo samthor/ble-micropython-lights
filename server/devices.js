@@ -202,19 +202,19 @@ function convertToSmartHome(raw) {
     case 'daikin-ac-wifi':
       info.manufacturer = 'Daikin';
       info.model = 'AC Wifi';
-      type = 'action.devices.types.AC_UNIT';
+      type = 'action.devices.types.THERMOSTAT';
       traits.push(
         'action.devices.traits.OnOff',
         'action.devices.traits.TemperatureSetting',
         'action.devices.traits.FanSpeed',
       );
-      attributes['availableThermostatModes'] = ['heat', 'cool', 'heatcool', 'fan-only', 'dry'];
+      attributes['availableThermostatModes'] = ['heat', 'cool', 'heatcool', 'fan-only', 'dry', 'on', 'off'];
       attributes['thermostatTemperatureUnit'] = 'C';
       attributes['thermostatTemperatureRange'] = {
         minThresholdCelsius: 18,  // actually 10
         maxThresholdCelsius: 25,  // actually 41
       };
-      attributes['bufferRangeCelsius'] = 0;
+      attributes['bufferRangeCelsius'] = 0;  // only for 'heatcool'
       attributes['availableFanSpeeds'] = {
         ordered: true,
         speeds: [
@@ -244,7 +244,7 @@ function convertToSmartHome(raw) {
           },
         ],
       };
-      nicknames.push(`${raw.name} AC`);
+      nicknames.push(`Air Conditioning`, `Thermostat`, `Split System`);
       break;
 
     case 'garage':
