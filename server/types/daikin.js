@@ -127,10 +127,17 @@ export class DaikinAC extends Device {
 
   /**
    * @param {string} mac
+   * @param {string} ip
    */
-  constructor(mac) {
+  constructor(mac, ip = '') {
     super();
     this.#mac = mac;
+
+    // TODO: gross
+    if (ip) {
+      console.warn('override mac to ip', mac, ip);
+      macToIP[mac] = ip;
+    }
   }
 
   async state() {

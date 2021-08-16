@@ -68,14 +68,10 @@
   'a0:cc:2b:ed:11:f2': {
     type: 'daikin-ac-wifi',
     name: 'Den',
+    ip: '192.168.1.145',
   },
   'a0:cc:2b:ed:1c:0d': {
     type: 'daikin-ac-wifi',
     name: 'Living',
-  },
-  // Garage (old)
-  '58:63:56:cc:57:7a': {
-    type: 'garage',
-    name: 'Garage',
   },
 }

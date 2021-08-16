@@ -49,7 +49,7 @@ for (const mac in devicesStore) {
       break;
 
     case 'daikin-ac-wifi':
-      model = new DaikinAC(mac);
+      model = new DaikinAC(mac, data.ip);
       break;
 
     default:
@@ -245,16 +245,6 @@ function convertToSmartHome(raw) {
         ],
       };
       nicknames.push(`Air Conditioning`, `Thermostat`, `Split System`);
-      break;
-
-    case 'garage':
-      info.manufacturer = 'Smart Door Devices';
-      info.model = 'Opener';
-      type = 'action.devices.types.GARAGE';
-      traits.push(
-        'action.devices.traits.OpenClose',
-      );
-      nicknames.push(`${raw.name} Door`)
       break;
 
   }

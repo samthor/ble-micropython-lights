@@ -112,6 +112,7 @@ export interface GenericDevice {
   type: string,
   name: string,
   mac?: string,
+  ip?: string,
 }
 
 export type DevicesStore = {[mac: string]: GenericDevice};
