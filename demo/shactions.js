@@ -2,7 +2,7 @@
 import * as types from '../types/index.js';
 import {sleep} from '../lib/promise.js';
 
-const target = new URL(window.location.toString());
+const target = new URL('http://beacon-reporting.whistlr.info');
 target.port = '8888';
 target.pathname = '/';
 
